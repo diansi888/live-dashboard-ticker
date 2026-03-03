@@ -1,0 +1,1327 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="theme-color" content="#0f172a">
+    <title>Live Ticker Hub - Philippines</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Inter:wght@400;600;800&display=swap');
+        
+        * {
+            -webkit-tap-highlight-color: transparent;
+            user-select: none;
+        }
+        
+        body {
+            font-family: 'Inter', sans-serif;
+            background: #0f172a;
+            overflow: hidden;
+        }
+        
+        .ticker-font {
+            font-family: 'JetBrains Mono', monospace;
+        }
+        
+        @keyframes scroll-left {
+            0% { transform: translateX(0); }
+            100% { transform: translateX(-50%); }
+        }
+        
+        .ticker-track {
+            display: flex;
+            width: fit-content;
+            animation: scroll-left 30s linear infinite;
+        }
+        
+        .ticker-track:hover {
+            animation-play-state: paused;
+        }
+        
+        .ticker-item {
+            flex-shrink: 0;
+            padding: 0 2rem;
+            border-right: 1px solid rgba(255,255,255,0.1);
+        }
+        
+        .glass {
+            background: rgba(30, 41, 59, 0.7);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+        
+        @keyframes pulse-dot {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.3; }
+        }
+        
+        .live-dot {
+            animation: pulse-dot 2s ease-in-out infinite;
+        }
+        
+        .gradient-text {
+            background: linear-gradient(135deg, #60a5fa, #a78bfa, #f472b6);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        
+        .gold-gradient {
+            background: linear-gradient(135deg, #fbbf24, #f59e0b, #d97706);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        
+        ::-webkit-scrollbar {
+            display: none;
+        }
+        
+        .swipe-indicator {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            animation: bounce 2s infinite;
+        }
+        
+        @keyframes bounce {
+            0%, 100% { transform: translateX(-50%) translateY(0); }
+            50% { transform: translateX(-50%) translateY(-10px); }
+        }
+        
+        .aqi-good { background: linear-gradient(135deg, #10b981, #059669); }
+        .aqi-moderate { background: linear-gradient(135deg, #fbbf24, #f59e0b); }
+        .aqi-unhealthy-sensitive { background: linear-gradient(135deg, #f97316, #ea580c); }
+        .aqi-unhealthy { background: linear-gradient(135deg, #ef4444, #dc2626); }
+        .aqi-very-unhealthy { background: linear-gradient(135deg, #a855f7, #7c3aed); }
+        
+        .uv-low { color: #10b981; }
+        .uv-moderate { color: #fbbf24; }
+        .uv-high { color: #f97316; }
+        .uv-very-high { color: #ef4444; }
+        .uv-extreme { color: #a855f7; }
+        
+        .metal-card {
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .metal-card::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: linear-gradient(45deg, transparent 30%, rgba(255,255,255,0.1) 50%, transparent 70%);
+            transform: rotate(45deg);
+            transition: all 0.5s;
+            opacity: 0;
+        }
+        
+        .metal-card:hover::before {
+            animation: shine 0.5s ease-in-out;
+        }
+        
+        @keyframes shine {
+            0% { transform: translateX(-100%) translateY(-100%) rotate(45deg); opacity: 0; }
+            50% { opacity: 1; }
+            100% { transform: translateX(100%) translateY(100%) rotate(45deg); opacity: 0; }
+        }
+        
+        @keyframes alert-pulse {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); }
+            50% { box-shadow: 0 0 0 10px rgba(239, 68, 68, 0); }
+        }
+        
+        .health-alert {
+            animation: alert-pulse 2s infinite;
+        }
+        
+        .crime-high { background: linear-gradient(135deg, #dc2626, #991b1b); }
+        .crime-moderate { background: linear-gradient(135deg, #ea580c, #c2410c); }
+        .crime-low { background: linear-gradient(135deg, #16a34a, #15803d); }
+        
+        .earthquake-alert {
+            background: linear-gradient(135deg, #ef4444, #dc2626);
+            animation: shake 0.5s infinite;
+        }
+        
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            25% { transform: translateX(-5px); }
+            75% { transform: translateX(5px); }
+        }
+        
+        #map {
+            height: 300px;
+            width: 100%;
+            border-radius: 12px;
+            z-index: 1;
+        }
+        
+        .nav-btn {
+            transition: all 0.3s ease;
+        }
+        
+        .nav-btn.active {
+            color: #60a5fa;
+            transform: scale(1.1);
+        }
+    </style>
+</head>
+<body class="h-screen w-screen text-white">
+
+    <!-- App Container -->
+    <div class="h-full flex flex-col relative">
+        
+        <!-- Header -->
+        <header class="glass px-4 py-3 flex justify-between items-center z-50">
+            <div class="flex items-center gap-2">
+                <div class="w-3 h-3 bg-green-500 rounded-full live-dot"></div>
+                <h1 class="font-bold text-lg tracking-tight">Ticker<span class="gradient-text">Hub</span> <span class="text-xs text-gray-400">PH</span></h1>
+            </div>
+            <div class="flex items-center gap-3">
+                <button onclick="refreshAll()" class="p-2 rounded-full hover:bg-white/10 transition active:scale-95">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+                </button>
+                <button onclick="toggleSettings()" class="p-2 rounded-full hover:bg-white/10 transition active:scale-95">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+                </button>
+            </div>
+        </header>
+
+        <!-- Main Content Area (Swipeable) -->
+        <div class="flex-1 overflow-hidden relative" id="main-container">
+            
+            <!-- PAGE 0: Weather -->
+            <div class="ticker-page absolute inset-0 flex flex-col" data-page="0">
+                <div class="glass mx-4 mt-4 rounded-2xl p-4">
+                    <div class="flex justify-between items-center mb-3">
+                        <span class="text-sm font-semibold text-blue-400 flex items-center gap-2">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z"></path></svg>
+                            WEATHER
+                        </span>
+                        <span class="text-xs text-gray-400" id="weather-last-update">Updated: Just now</span>
+                    </div>
+                    
+                    <div class="flex items-center justify-between mb-4">
+                        <div>
+                            <div class="text-5xl font-bold ticker-font" id="current-temp">--°</div>
+                            <div class="text-gray-400 text-sm mt-1" id="weather-desc">Loading...</div>
+                        </div>
+                        <div class="text-right">
+                            <div class="text-2xl" id="weather-icon">⛅</div>
+                            <div class="text-xs text-gray-400 mt-1" id="location">Manila, PH</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="glass mx-4 mt-3 rounded-2xl overflow-hidden flex-1">
+                    <div class="p-3 border-b border-white/10">
+                        <span class="text-xs font-bold text-gray-400 uppercase tracking-wider">Forecast Ticker</span>
+                    </div>
+                    <div class="overflow-hidden py-4">
+                        <div class="ticker-track" id="weather-ticker"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- PAGE 1: Traffic with Live Map -->
+            <div class="ticker-page absolute inset-0 flex flex-col hidden" data-page="1">
+                <div class="glass mx-4 mt-4 rounded-2xl p-4">
+                    <div class="flex justify-between items-center mb-3">
+                        <span class="text-sm font-semibold text-orange-400 flex items-center gap-2">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"></path></svg>
+                            METRO MANILA TRAFFIC
+                        </span>
+                        <span class="text-xs px-2 py-1 bg-red-500/20 text-red-400 rounded-full" id="traffic-status">Live</span>
+                    </div>
+                    
+                    <div class="space-y-3 max-h-[200px] overflow-y-auto" id="traffic-list"></div>
+                </div>
+
+                <!-- Live Map -->
+                <div class="glass mx-4 mt-3 rounded-2xl flex-1 relative overflow-hidden p-4">
+                    <div class="flex justify-between items-center mb-2">
+                        <span class="text-xs font-bold text-gray-400 uppercase tracking-wider">Live Traffic Map</span>
+                        <button onclick="initMap()" class="text-xs px-2 py-1 bg-blue-500/20 text-blue-400 rounded">Refresh Map</button>
+                    </div>
+                    <div id="map"></div>
+                    <div class="mt-2 text-xs text-gray-400 text-center">Real-time traffic conditions in Metro Manila</div>
+                </div>
+            </div>
+
+            <!-- PAGE 2: Currency -->
+            <div class="ticker-page absolute inset-0 flex flex-col hidden" data-page="2">
+                <div class="glass mx-4 mt-4 rounded-2xl p-4">
+                    <div class="flex justify-between items-center mb-3">
+                        <span class="text-sm font-semibold text-green-400 flex items-center gap-2">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                            CURRENCY
+                        </span>
+                        <span class="text-xs text-gray-400">Live FX Rates</span>
+                    </div>
+                    
+                    <div class="text-center py-4 border-b border-white/10">
+                        <div class="text-sm text-gray-400 mb-1">USD/PHP</div>
+                        <div class="text-4xl font-bold ticker-font gradient-text" id="main-rate">56.24</div>
+                        <div class="text-xs text-green-400 mt-1 flex items-center justify-center gap-1">
+                            <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 10l7-7m0 0l7 7m-7-7v18"></path></svg>
+                            +0.12 (0.21%)
+                        </div>
+                    </div>
+                </div>
+
+                <div class="glass mx-4 mt-3 rounded-2xl overflow-hidden flex-1">
+                    <div class="p-3 border-b border-white/10 flex justify-between items-center">
+                        <span class="text-xs font-bold text-gray-400 uppercase tracking-wider">Global Markets</span>
+                        <div class="flex gap-2">
+                            <button class="text-xs px-2 py-1 bg-white/10 rounded hover:bg-white/20 transition">Forex</button>
+                            <button class="text-xs px-2 py-1 bg-white/10 rounded hover:bg-white/20 transition">Crypto</button>
+                        </div>
+                    </div>
+                    <div class="overflow-hidden py-4">
+                        <div class="ticker-track" id="currency-ticker" style="animation-duration: 45s;"></div>
+                    </div>
+                    
+                    <div class="grid grid-cols-2 gap-2 p-4" id="currency-grid"></div>
+                </div>
+            </div>
+
+            <!-- PAGE 3: Precious Metals -->
+            <div class="ticker-page absolute inset-0 flex flex-col hidden" data-page="3">
+                <div class="glass mx-4 mt-4 rounded-2xl p-4">
+                    <div class="flex justify-between items-center mb-3">
+                        <span class="text-sm font-semibold text-yellow-400 flex items-center gap-2">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                            PRECIOUS METALS
+                        </span>
+                        <div class="flex gap-2">
+                            <button onclick="toggleMetalUnit()" class="text-xs px-3 py-1 bg-yellow-500/20 text-yellow-400 rounded-full font-medium" id="metal-unit-btn">per oz</button>
+                        </div>
+                    </div>
+                    
+                    <div class="text-center py-4 border-b border-white/10">
+                        <div class="text-sm text-gray-400 mb-1">Gold Spot (XAU/USD)</div>
+                        <div class="text-4xl font-bold ticker-font gold-gradient" id="gold-main-rate">2,045.80</div>
+                        <div class="flex justify-center gap-4 mt-2 text-xs">
+                            <span class="text-gray-400">Bid: <span class="text-white ticker-font" id="gold-bid">2,045.40</span></span>
+                            <span class="text-gray-400">Ask: <span class="text-white ticker-font" id="gold-ask">2,046.20</span></span>
+                        </div>
+                        <div class="text-xs text-green-400 mt-2 flex items-center justify-center gap-1">
+                            <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 10l7-7m0 0l7 7m-7-7v18"></path></svg>
+                            +12.40 (+0.61%)
+                        </div>
+                    </div>
+                </div>
+
+                <div class="glass mx-4 mt-3 rounded-2xl overflow-hidden flex-1">
+                    <div class="p-3 border-b border-white/10 flex justify-between items-center">
+                        <span class="text-xs font-bold text-gray-400 uppercase tracking-wider">Live Spot Prices</span>
+                        <span class="text-xs text-yellow-500/80">LBMA & COMEX</span>
+                    </div>
+                    <div class="overflow-hidden py-4">
+                        <div class="ticker-track" id="metals-ticker" style="animation-duration: 40s;"></div>
+                    </div>
+                    
+                    <div class="grid grid-cols-2 gap-3 p-4" id="metals-grid"></div>
+                </div>
+            </div>
+
+            <!-- PAGE 4: Health -->
+            <div class="ticker-page absolute inset-0 flex flex-col hidden" data-page="4">
+                <div class="glass mx-4 mt-4 rounded-2xl p-4">
+                    <div class="flex justify-between items-center mb-3">
+                        <span class="text-sm font-semibold text-teal-400 flex items-center gap-2">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"></path></svg>
+                            HEALTH ALERTS
+                        </span>
+                        <span class="text-xs px-2 py-1 bg-teal-500/20 text-teal-400 rounded-full flex items-center gap-1">
+                            <span class="w-2 h-2 bg-teal-400 rounded-full animate-pulse"></span>
+                            Live
+                        </span>
+                    </div>
+                    
+                    <div class="flex items-center gap-4 mb-4">
+                        <div class="w-20 h-20 rounded-2xl aqi-moderate flex items-center justify-center text-3xl font-bold shadow-lg" id="aqi-badge">
+                            82
+                        </div>
+                        <div class="flex-1">
+                            <div class="text-sm text-gray-400 mb-1">Air Quality Index</div>
+                            <div class="text-lg font-bold text-yellow-400" id="aqi-status">Moderate</div>
+                            <div class="text-xs text-gray-500 mt-1" id="aqi-advice">Sensitive groups should limit outdoor exertion</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="glass mx-4 mt-3 rounded-2xl p-4 flex-1 overflow-y-auto">
+                    <div class="grid grid-cols-2 gap-3 mb-4">
+                        <div class="bg-white/5 rounded-xl p-3 border border-white/10">
+                            <div class="flex items-center gap-2 mb-2">
+                                <svg class="w-4 h-4 text-orange-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"></path></svg>
+                                <span class="text-xs font-medium text-gray-400">UV Index</span>
+                            </div>
+                            <div class="text-2xl font-bold uv-high" id="uv-value">7.2</div>
+                            <div class="text-xs text-orange-400 mt-1" id="uv-status">High</div>
+                            <div class="text-[10px] text-gray-500 mt-1">Protection required 10am-4pm</div>
+                        </div>
+                        
+                        <div class="bg-white/5 rounded-xl p-3 border border-white/10">
+                            <div class="flex items-center gap-2 mb-2">
+                                <svg class="w-4 h-4 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z"></path></svg>
+                                <span class="text-xs font-medium text-gray-400">Pollen</span>
+                            </div>
+                            <div class="text-2xl font-bold text-yellow-400" id="pollen-value">4.2</div>
+                            <div class="text-xs text-yellow-400 mt-1">Moderate</div>
+                            <div class="text-[10px] text-gray-500 mt-1">Grass & Ragweed</div>
+                        </div>
+                        
+                        <div class="bg-white/5 rounded-xl p-3 border border-white/10">
+                            <div class="flex items-center gap-2 mb-2">
+                                <svg class="w-4 h-4 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"></path></svg>
+                                <span class="text-xs font-medium text-gray-400">Humidity</span>
+                            </div>
+                            <div class="text-2xl font-bold text-blue-400">68%</div>
+                            <div class="text-xs text-gray-400 mt-1">Comfortable</div>
+                        </div>
+                        
+                        <div class="bg-white/5 rounded-xl p-3 border border-white/10">
+                            <div class="flex items-center gap-2 mb-2">
+                                <svg class="w-4 h-4 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path></svg>
+                                <span class="text-xs font-medium text-gray-400">Feels Like</span>
+                            </div>
+                            <div class="text-2xl font-bold text-red-400">34°</div>
+                            <div class="text-xs text-orange-400 mt-1">Heat Index</div>
+                        </div>
+                    </div>
+                    
+                    <div class="border-t border-white/10 pt-3">
+                        <span class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2 block">Health Advisories</span>
+                        <div class="overflow-hidden py-2">
+                            <div class="ticker-track" id="health-ticker" style="animation-duration: 35s;"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- PAGE 5: Airport -->
+            <div class="ticker-page absolute inset-0 flex flex-col hidden" data-page="5">
+                <div class="glass mx-4 mt-4 rounded-2xl p-4">
+                    <div class="flex justify-between items-center mb-3">
+                        <span class="text-sm font-semibold text-purple-400 flex items-center gap-2">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"></path></svg>
+                            NAIA AIRPORT
+                        </span>
+                        <span class="text-xs px-2 py-1 bg-purple-500/20 text-purple-400 rounded-full">Live</span>
+                    </div>
+                    
+                    <div class="grid grid-cols-2 gap-2 mb-4">
+                        <div class="bg-purple-500/10 rounded-xl p-3 border border-purple-500/20">
+                            <div class="text-xs text-gray-400 mb-1">Terminal 1</div>
+                            <div class="text-lg font-bold text-white">Intl</div>
+                            <div class="text-xs text-green-400 mt-1">Normal</div>
+                        </div>
+                        <div class="bg-purple-500/10 rounded-xl p-3 border border-purple-500/20">
+                            <div class="text-xs text-gray-400 mb-1">Terminal 2</div>
+                            <div class="text-lg font-bold text-white">PAL</div>
+                            <div class="text-xs text-yellow-400 mt-1">Busy</div>
+                        </div>
+                        <div class="bg-purple-500/10 rounded-xl p-3 border border-purple-500/20">
+                            <div class="text-xs text-gray-400 mb-1">Terminal 3</div>
+                            <div class="text-lg font-bold text-white">Intl</div>
+                            <div class="text-xs text-green-400 mt-1">Normal</div>
+                        </div>
+                        <div class="bg-purple-500/10 rounded-xl p-3 border border-purple-500/20">
+                            <div class="text-xs text-gray-400 mb-1">Terminal 4</div>
+                            <div class="text-lg font-bold text-white">Domestic</div>
+                            <div class="text-xs text-green-400 mt-1">Light</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="glass mx-4 mt-3 rounded-2xl p-4 flex-1 overflow-y-auto">
+                    <div class="flex justify-between items-center mb-3">
+                        <span class="text-xs font-bold text-gray-400 uppercase tracking-wider">Flight Alerts</span>
+                        <span class="text-xs text-gray-500">NAIA & Clark</span>
+                    </div>
+                    <div class="space-y-3" id="airport-alerts"></div>
+                    
+                    <div class="mt-4 border-t border-white/10 pt-3">
+                        <span class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2 block">Runway Status</span>
+                        <div class="grid grid-cols-2 gap-2">
+                            <div class="bg-green-500/10 rounded-lg p-2 text-center">
+                                <div class="text-xs text-green-400">Runway 06/24</div>
+                                <div class="text-sm font-bold text-white">Active</div>
+                            </div>
+                            <div class="bg-green-500/10 rounded-lg p-2 text-center">
+                                <div class="text-xs text-green-400">Runway 13/31</div>
+                                <div class="text-sm font-bold text-white">Active</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- PAGE 6: Temperature & Humidity -->
+            <div class="ticker-page absolute inset-0 flex flex-col hidden" data-page="6">
+                <div class="glass mx-4 mt-4 rounded-2xl p-4">
+                    <div class="flex justify-between items-center mb-3">
+                        <span class="text-sm font-semibold text-cyan-400 flex items-center gap-2">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path></svg>
+                            TEMPERATURE & HUMIDITY
+                        </span>
+                        <span class="text-xs text-gray-400">Metro Manila</span>
+                    </div>
+                    
+                    <div class="grid grid-cols-2 gap-3 mb-4">
+                        <div class="bg-gradient-to-br from-orange-500/20 to-red-500/20 rounded-xl p-4 text-center border border-orange-500/30">
+                            <div class="text-4xl mb-1">🌡️</div>
+                            <div class="text-3xl font-bold text-white">32°C</div>
+                            <div class="text-sm text-orange-400">Actual Temp</div>
+                        </div>
+                        <div class="bg-gradient-to-br from-red-500/20 to-purple-500/20 rounded-xl p-4 text-center border border-red-500/30">
+                            <div class="text-4xl mb-1">🔥</div>
+                            <div class="text-3xl font-bold text-white">38°C</div>
+                            <div class="text-sm text-red-400">Feels Like</div>
+                        </div>
+                    </div>
+
+                    <div class="space-y-3">
+                        <div class="bg-white/5 rounded-xl p-3 flex justify-between items-center">
+                            <div class="flex items-center gap-3">
+                                <span class="text-2xl">💧</span>
+                                <div>
+                                    <div class="text-sm font-medium">Humidity</div>
+                                    <div class="text-xs text-gray-400">Relative humidity</div>
+                                </div>
+                            </div>
+                            <div class="text-xl font-bold text-blue-400">68%</div>
+                        </div>
+                        
+                        <div class="bg-white/5 rounded-xl p-3 flex justify-between items-center">
+                            <div class="flex items-center gap-3">
+                                <span class="text-2xl">🌡️</span>
+                                <div>
+                                    <div class="text-sm font-medium">Dew Point</div>
+                                    <div class="text-xs text-gray-400">Comfort level</div>
+                                </div>
+                            </div>
+                            <div class="text-xl font-bold text-cyan-400">24°C</div>
+                        </div>
+                        
+                        <div class="bg-white/5 rounded-xl p-3 flex justify-between items-center">
+                            <div class="flex items-center gap-3">
+                                <span class="text-2xl">💨</span>
+                                <div>
+                                    <div class="text-sm font-medium">Wind Speed</div>
+                                    <div class="text-xs text-gray-400">NW direction</div>
+                                </div>
+                            </div>
+                            <div class="text-xl font-bold text-green-400">12 km/h</div>
+                        </div>
+                        
+                        <div class="bg-white/5 rounded-xl p-3 flex justify-between items-center">
+                            <div class="flex items-center gap-3">
+                                <span class="text-2xl">👁️</span>
+                                <div>
+                                    <div class="text-sm font-medium">Visibility</div>
+                                    <div class="text-xs text-gray-400">Clear conditions</div>
+                                </div>
+                            </div>
+                            <div class="text-xl font-bold text-yellow-400">10 km</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="glass mx-4 mt-3 rounded-2xl p-4 flex-1">
+                    <div class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">Hourly Forecast</div>
+                    <div class="overflow-x-auto">
+                        <div class="flex gap-3" id="temp-forecast">
+                            <!-- Populated by JS -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- PAGE 7: Earthquake Advisory -->
+            <div class="ticker-page absolute inset-0 flex flex-col hidden" data-page="7">
+                <div class="glass mx-4 mt-4 rounded-2xl p-4 earthquake-alert">
+                    <div class="flex justify-between items-center mb-3">
+                        <span class="text-sm font-semibold text-white flex items-center gap-2">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+                            EARTHQUAKE ADVISORY
+                        </span>
+                        <span class="text-xs px-2 py-1 bg-red-500 text-white rounded-full font-bold">ALERT</span>
+                    </div>
+                    
+                    <div class="text-center py-4">
+                        <div class="text-6xl font-bold text-white mb-2">4.2</div>
+                        <div class="text-lg text-red-200">Magnitude</div>
+                        <div class="text-sm text-white/80 mt-2">Luzon Region - 45km N of Manila</div>
+                        <div class="text-xs text-white/60">Depth: 32km | Time: 14:32 PST</div>
+                    </div>
+                </div>
+
+                <div class="glass mx-4 mt-3 rounded-2xl p-4 flex-1 overflow-y-auto">
+                    <div class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">Recent Seismic Activity</div>
+                    <div class="space-y-3" id="earthquake-list">
+                        <!-- Populated by JS -->
+                    </div>
+                    
+                    <div class="mt-4 bg-yellow-500/10 border border-yellow-500/20 rounded-xl p-3">
+                        <div class="flex items-center gap-2 mb-2">
+                            <span class="text-yellow-400">⚠️</span>
+                            <span class="text-sm font-bold text-yellow-400">Safety Reminder</span>
+                        </div>
+                        <ul class="text-xs text-gray-300 space-y-1 ml-6">
+                            <li>• Drop, Cover, and Hold On</li>
+                            <li>• Stay away from windows</li>
+                            <li>• Have emergency kit ready</li>
+                            <li>• Follow PHIVOLCS updates</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
+            <!-- PAGE 8: Crime Alert -->
+            <div class="ticker-page absolute inset-0 flex flex-col hidden" data-page="8">
+                <div class="glass mx-4 mt-4 rounded-2xl p-4">
+                    <div class="flex justify-between items-center mb-3">
+                        <span class="text-sm font-semibold text-red-400 flex items-center gap-2">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
+                            CRIME ALERT - PHILIPPINES
+                        </span>
+                        <span class="text-xs px-2 py-1 bg-red-500/20 text-red-400 rounded-full">PNP Updates</span>
+                    </div>
+                    
+                    <div class="grid grid-cols-3 gap-2 mb-4">
+                        <div class="crime-high rounded-xl p-2 text-center">
+                            <div class="text-xs text-white/70">National</div>
+                            <div class="text-lg font-bold text-white">HIGH</div>
+                            <div class="text-[10px] text-white/60">Index Crimes</div>
+                        </div>
+                        <div class="crime-moderate rounded-xl p-2 text-center">
+                            <div class="text-xs text-white/70">NCR</div>
+                            <div class="text-lg font-bold text-white">MOD</div>
+                            <div class="text-[10px] text-white/60">Street Crime</div>
+                        </div>
+                        <div class="crime-low rounded-xl p-2 text-center">
+                            <div class="text-xs text-white/70">Regions</div>
+                            <div class="text-lg font-bold text-white">LOW</div>
+                            <div class="text-[10px] text-white/60">Violent Crime</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="glass mx-4 mt-3 rounded-2xl p-4 flex-1 overflow-y-auto">
+                    <div class="flex justify-between items-center mb-3">
+                        <span class="text-xs font-bold text-gray-400 uppercase tracking-wider">Regional Alerts</span>
+                        <span class="text-xs text-gray-500">Last 24hrs</span>
+                    </div>
+                    <div class="space-y-3" id="crime-alerts"></div>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Bottom Navigation - 9 Icons -->
+        <nav class="glass px-1 py-3 pb-6">
+            <div class="flex justify-around items-center">
+                <button onclick="switchPage(0)" class="nav-btn active flex flex-col items-center gap-1 text-blue-400 transition min-w-[36px]" data-page="0">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z"></path></svg>
+                    <span class="text-[8px] font-medium">Weather</span>
+                </button>
+                <button onclick="switchPage(1)" class="nav-btn flex flex-col items-center gap-1 text-gray-500 transition min-w-[36px]" data-page="1">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"></path></svg>
+                    <span class="text-[8px] font-medium">Traffic</span>
+                </button>
+                <button onclick="switchPage(2)" class="nav-btn flex flex-col items-center gap-1 text-gray-500 transition min-w-[36px]" data-page="2">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                    <span class="text-[8px] font-medium">Currency</span>
+                </button>
+                <button onclick="switchPage(3)" class="nav-btn flex flex-col items-center gap-1 text-gray-500 transition min-w-[36px]" data-page="3">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                    <span class="text-[8px] font-medium">Metals</span>
+                </button>
+                <button onclick="switchPage(4)" class="nav-btn flex flex-col items-center gap-1 text-gray-500 transition min-w-[36px]" data-page="4">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"></path></svg>
+                    <span class="text-[8px] font-medium">Health</span>
+                </button>
+                <button onclick="switchPage(5)" class="nav-btn flex flex-col items-center gap-1 text-gray-500 transition min-w-[36px]" data-page="5">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"></path></svg>
+                    <span class="text-[8px] font-medium">Airport</span>
+                </button>
+                <button onclick="switchPage(6)" class="nav-btn flex flex-col items-center gap-1 text-gray-500 transition min-w-[36px]" data-page="6">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path></svg>
+                    <span class="text-[8px] font-medium">Temp</span>
+                </button>
+                <button onclick="switchPage(7)" class="nav-btn flex flex-col items-center gap-1 text-gray-500 transition min-w-[36px]" data-page="7">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+                    <span class="text-[8px] font-medium">Quake</span>
+                </button>
+                <button onclick="switchPage(8)" class="nav-btn flex flex-col items-center gap-1 text-gray-500 transition min-w-[36px]" data-page="8">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
+                    <span class="text-[8px] font-medium">Crime</span>
+                </button>
+            </div>
+        </nav>
+
+        <!-- Settings Modal -->
+        <div id="settings-modal" class="absolute inset-0 bg-black/80 backdrop-blur-sm z-50 hidden flex items-end sm:items-center justify-center">
+            <div class="bg-slate-800 w-full sm:w-96 sm:rounded-2xl rounded-t-2xl p-6 transform transition-transform translate-y-full sm:translate-y-0" id="settings-content">
+                <div class="flex justify-between items-center mb-6">
+                    <h2 class="text-xl font-bold">Settings</h2>
+                    <button onclick="toggleSettings()" class="p-2 hover:bg-white/10 rounded-full">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                    </button>
+                </div>
+                
+                <div class="space-y-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-400 mb-2">Location</label>
+                        <input type="text" value="Manila, Philippines" class="w-full bg-slate-700 rounded-lg px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    </div>
+                    
+                    <div>
+                        <label class="block text-sm font-medium text-gray-400 mb-2">Update Interval</label>
+                        <select class="w-full bg-slate-700 rounded-lg px-4 py-3 text-white focus:outline-none">
+                            <option>30 seconds</option>
+                            <option selected>1 minute</option>
+                            <option>5 minutes</option>
+                            <option>15 minutes</option>
+                        </select>
+                    </div>
+                    
+                    <div class="flex items-center justify-between py-2">
+                        <span class="text-sm">Push Notifications</span>
+                        <button class="w-12 h-6 bg-blue-500 rounded-full relative transition" onclick="this.classList.toggle('bg-gray-600'); this.classList.toggle('bg-blue-500'); this.firstElementChild.classList.toggle('translate-x-6')">
+                            <div class="w-4 h-4 bg-white rounded-full absolute left-1 top-1 transition-transform duration-200"></div>
+                        </button>
+                    </div>
+                    
+                    <div class="pt-4 border-t border-white/10">
+                        <p class="text-xs text-gray-500 mb-2">API Configuration</p>
+                        <button class="w-full bg-white/10 hover:bg-white/20 rounded-lg px-4 py-3 text-sm font-medium transition">
+                            Configure Data Sources
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Swipe Indicator -->
+        <div class="swipe-indicator text-white/30 text-xs flex flex-col items-center gap-1 pointer-events-none">
+            <span>Swipe to navigate</span>
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 14l-7 7m0 0l-7-7m7 7V3"></path></svg>
+        </div>
+    </div>
+
+    <script>
+        // State Management
+        let currentPage = 0;
+        let metalUnit = 'oz';
+        let mapInitialized = false;
+        const pages = ['weather', 'traffic', 'currency', 'metals', 'health', 'airport', 'temp', 'quake', 'crime'];
+        
+        // Mock Data Generators
+        function generateWeatherData() {
+            const conditions = [
+                { icon: '☀️', desc: 'Sunny', temp: 32 },
+                { icon: '⛅', desc: 'Partly Cloudy', temp: 30 },
+                { icon: '🌧️', desc: 'Rainy', temp: 28 },
+                { icon: '⛈️', desc: 'Thunderstorm', temp: 27 }
+            ];
+            
+            const forecast = [];
+            const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+            
+            for (let i = 0; i < 7; i++) {
+                const cond = conditions[Math.floor(Math.random() * conditions.length)];
+                forecast.push({
+                    day: days[i],
+                    icon: cond.icon,
+                    temp: cond.temp + Math.floor(Math.random() * 5 - 2),
+                    desc: cond.desc
+                });
+            }
+            return forecast;
+        }
+
+        function generateTrafficData() {
+            const routes = [
+                // Major EDSA Segments
+                { name: 'EDSA - Balintawak to Cubao', status: 'heavy', speed: '18 km/h', time: '50 min' },
+                { name: 'EDSA - Cubao to Ortigas', status: 'heavy', speed: '15 km/h', time: '45 min' },
+                { name: 'EDSA - Ortigas to Ayala', status: 'moderate', speed: '25 km/h', time: '35 min' },
+                { name: 'EDSA - Ayala to Magallanes', status: 'moderate', speed: '30 km/h', time: '25 min' },
+                { name: 'EDSA - Magallanes to MOA', status: 'light', speed: '45 km/h', time: '20 min' },
+                
+                // C5 Road
+                { name: 'C5 - Mindanao Ave to Katipunan', status: 'moderate', speed: '35 km/h', time: '40 min' },
+                { name: 'C5 - Katipunan to Ortigas Ave', status: 'heavy', speed: '20 km/h', time: '45 min' },
+                { name: 'C5 - Ortigas to Kalayaan', status: 'moderate', speed: '32 km/h', time: '30 min' },
+                { name: 'C5 - Kalayaan to SLEX', status: 'light', speed: '50 km/h', time: '20 min' },
+                
+                // SLEX/NLEX
+                { name: 'SLEX - Alabang to Magallanes', status: 'light', speed: '65 km/h', time: '25 min' },
+                { name: 'SLEX - Magallanes to Makati', status: 'moderate', speed: '40 km/h', time: '15 min' },
+                { name: 'NLEX - Balintawak to Bocaue', status: 'light', speed: '80 km/h', time: '30 min' },
+                { name: 'NLEX - Bocaue to San Fernando', status: 'light', speed: '85 km/h', time: '45 min' },
+                
+                // Other Major Roads
+                { name: 'Roxas Blvd - Tambo to Kalaw', status: 'moderate', speed: '35 km/h', time: '30 min' },
+                { name: 'Roxas Blvd - Kalaw to Intramuros', status: 'heavy', speed: '20 km/h', time: '25 min' },
+                { name: 'Quezon Ave - Elliptical to Welcome', status: 'heavy', speed: '22 km/h', time: '35 min' },
+                { name: 'Quezon Ave - Welcome to Araneta', status: 'moderate', speed: '30 km/h', time: '20 min' },
+                { name: 'Commonwealth Ave - Batasan to Elliptical', status: 'heavy', speed: '25 km/h', time: '50 min' },
+                { name: 'Ortigas Ave - Greenhills to Ortigas Center', status: 'moderate', speed: '28 km/h', time: '22 min' },
+                { name: 'Marcos Highway - Antipolo to Cubao', status: 'heavy', speed: '25 km/h', time: '55 min' },
+                { name: 'CAVITEX - Kawit to MOA', status: 'moderate', speed: '50 km/h', time: '40 min' },
+                { name: 'Skyway - Magallanes to Bicutan', status: 'light', speed: '60 km/h', time: '15 min' },
+                { name: 'Skyway - Bicutan to Sucat', status: 'light', speed: '70 km/h', time: '10 min' },
+                
+                // Makati CBD
+                { name: 'Ayala Ave - EDSA to Gil Puyat', status: 'moderate', speed: '25 km/h', time: '15 min' },
+                { name: 'Makati Ave - J.P. Rizal to Kalayaan', status: 'light', speed: '40 km/h', time: '10 min' },
+                { name: 'Gil Puyat Ave - Makati to Pasay', status: 'heavy', speed: '18 km/h', time: '35 min' },
+                
+                // QC Areas
+                { name: 'Timog Ave - EDSA to Quezon Ave', status: 'moderate', speed: '30 km/h', time: '20 min' },
+                { name: 'Tomas Morato - E. Rodriguez to Scout', status: 'light', speed: '35 km/h', time: '15 min' }
+            ];
+            return routes;
+        }
+
+        function generateCurrencyData() {
+            const rates = [
+                { pair: 'EUR/PHP', rate: 61.23, change: -0.15 },
+                { pair: 'JPY/PHP', rate: 0.38, change: 0.02 },
+                { pair: 'GBP/PHP', rate: 71.45, change: 0.32 },
+                { pair: 'AUD/PHP', rate: 37.12, change: -0.08 },
+                { pair: 'SGD/PHP', rate: 41.89, change: 0.11 },
+                { pair: 'CNY/PHP', rate: 7.78, change: -0.03 },
+                { pair: 'BTC/USD', rate: 43250, change: 2.34 },
+                { pair: 'ETH/USD', rate: 2280, change: 1.89 }
+            ];
+            return rates;
+        }
+
+        function generateMetalsData() {
+            return [
+                { symbol: 'XAU', name: 'Gold', price: 2045.80, bid: 2045.40, ask: 2046.20, change: 12.40, changeP: 0.61, unit: 'oz' },
+                { symbol: 'XAG', name: 'Silver', price: 24.85, bid: 24.82, ask: 24.88, change: 0.35, changeP: 1.43, unit: 'oz' },
+                { symbol: 'XPT', name: 'Platinum', price: 925.40, bid: 923.00, ask: 927.80, change: -5.20, changeP: -0.56, unit: 'oz' },
+                { symbol: 'XPD', name: 'Palladium', price: 1025.60, bid: 1022.00, ask: 1029.20, change: 15.80, changeP: 1.56, unit: 'oz' }
+            ];
+        }
+
+        function generateHealthData() {
+            const alerts = [
+                { type: 'heat', message: 'Heat index reaching 38°C this afternoon', severity: 'warning' },
+                { type: 'air', message: 'Air quality improving in Metro Manila', severity: 'info' },
+                { type: 'uv', message: 'UV Index very high 11am-3pm', severity: 'warning' },
+                { type: 'pollen', message: 'Grass pollen levels rising', severity: 'info' },
+                { type: 'dengue', message: 'Dengue alert: 3 new cases in your barangay', severity: 'alert' },
+                { type: 'airport', message: 'NAIA Terminal 3: Flight delays due to weather', severity: 'warning' },
+                { type: 'airport', message: 'Terminal 2: Long check-in queues expected', severity: 'info' }
+            ];
+            return alerts;
+        }
+
+        function generateAirportData() {
+            return [
+                { flight: 'PR119', route: 'MNL → LAX', status: 'Delayed', time: '14:30', terminal: 'T1', gate: 'A1' },
+                { flight: 'CX902', route: 'MNL → HKG', status: 'On Time', time: '15:15', terminal: 'T3', gate: 'B2' },
+                { flight: 'SQ917', route: 'MNL → SIN', status: 'Boarding', time: '16:00', terminal: 'T3', gate: 'C3' },
+                { flight: '5J651', route: 'MNL → CEB', status: 'On Time', time: '14:45', terminal: 'T4', gate: 'D1' },
+                { flight: 'PR213', route: 'MNL → DVO', status: 'Cancelled', time: '15:30', terminal: 'T2', gate: 'E2' },
+                { flight: 'KE623', route: 'MNL → ICN', status: 'On Time', time: '17:20', terminal: 'T1', gate: 'F3' }
+            ];
+        }
+
+        function generateEarthquakeData() {
+            return [
+                { magnitude: '4.2', location: '45km N of Manila', depth: '32km', time: '14:32', intensity: 'IV' },
+                { magnitude: '3.8', location: '23km E of Quezon City', depth: '28km', time: '12:15', intensity: 'III' },
+                { magnitude: '2.9', location: '67km S of Baguio', depth: '45km', time: '09:45', intensity: 'II' },
+                { magnitude: '3.5', location: '12km W of Tagaytay', depth: '35km', time: 'Yesterday', intensity: 'III' }
+            ];
+        }
+
+        function generateCrimeData() {
+            return [
+                { region: 'NCR - Manila', crime: 'Theft', severity: 'high', time: '2 hrs ago', status: 'Under Investigation' },
+                { region: 'NCR - Quezon City', crime: 'Robbery', severity: 'moderate', time: '4 hrs ago', status: 'Suspect Arrested' },
+                { region: 'NCR - Makati', crime: 'Cybercrime', severity: 'moderate', time: '6 hrs ago', status: 'Ongoing' },
+                { region: 'Region 3 - Bulacan', crime: 'Drug Bust', severity: 'high', time: '1 hr ago', status: 'Operation Success' },
+                { region: 'Region 4A - Cavite', crime: 'Vehicle Theft', severity: 'low', time: '8 hrs ago', status: 'Case Filed' },
+                { region: 'Region 7 - Cebu', crime: 'Scamming', severity: 'moderate', time: '3 hrs ago', status: 'Under Investigation' },
+                { region: 'Region 11 - Davao', crime: 'Smuggling', severity: 'high', time: '5 hrs ago', status: 'Contraband Seized' }
+            ];
+        }
+
+        // Render Functions
+        function renderWeather() {
+            const forecast = generateWeatherData();
+            const ticker = document.getElementById('weather-ticker');
+            const current = forecast[0];
+            
+            document.getElementById('current-temp').textContent = current.temp + '°';
+            document.getElementById('weather-desc').textContent = current.desc;
+            document.getElementById('weather-icon').textContent = current.icon;
+            
+            let html = '';
+            [...forecast, ...forecast].forEach(day => {
+                html += `
+                    <div class="ticker-item flex flex-col items-center min-w-[100px]">
+                        <span class="text-xs text-gray-400 mb-1">${day.day}</span>
+                        <span class="text-2xl mb-1">${day.icon}</span>
+                        <span class="text-lg font-bold ticker-font">${day.temp}°</span>
+                    </div>
+                `;
+            });
+            ticker.innerHTML = html;
+        }
+
+        function renderTraffic() {
+            const routes = generateTrafficData();
+            const container = document.getElementById('traffic-list');
+            
+            container.innerHTML = routes.map(route => {
+                const statusColors = {
+                    heavy: 'text-red-400 bg-red-400/20',
+                    moderate: 'text-yellow-400 bg-yellow-400/20',
+                    light: 'text-green-400 bg-green-400/20'
+                };
+                
+                return `
+                    <div class="flex items-center justify-between p-3 bg-white/5 rounded-xl">
+                        <div class="flex-1">
+                            <div class="font-medium text-sm mb-1">${route.name}</div>
+                            <div class="flex items-center gap-3 text-xs text-gray-400">
+                                <span class="flex items-center gap-1">
+                                    <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+                                    ${route.speed}
+                                </span>
+                                <span>•</span>
+                                <span>${route.time}</span>
+                            </div>
+                        </div>
+                        <span class="px-3 py-1 rounded-full text-xs font-bold ${statusColors[route.status]} capitalize">
+                            ${route.status}
+                        </span>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function initMap() {
+            if (mapInitialized) return;
+            
+            const map = L.map('map').setView([14.5995, 120.9842], 11);
+            
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '© OpenStreetMap contributors'
+            }).addTo(map);
+            
+            // Add traffic markers for major areas
+            const trafficPoints = [
+                { lat: 14.5995, lng: 120.9842, name: 'Manila City', status: 'heavy' },
+                { lat: 14.5547, lng: 121.0244, name: 'Makati CBD', status: 'moderate' },
+                { lat: 14.6091, lng: 121.0223, name: 'Ortigas Center', status: 'heavy' },
+                { lat: 14.6507, lng: 121.0498, name: 'Quezon City', status: 'moderate' },
+                { lat: 14.5086, lng: 121.0194, name: 'Pasay City', status: 'light' },
+                { lat: 14.4445, lng: 121.0437, name: 'Alabang', status: 'light' },
+                { lat: 14.5176, lng: 121.0509, name: 'BGC Taguig', status: 'moderate' }
+            ];
+            
+            trafficPoints.forEach(point => {
+                const color = point.status === 'heavy' ? 'red' : point.status === 'moderate' ? 'orange' : 'green';
+                L.circleMarker([point.lat, point.lng], {
+                    radius: 8,
+                    fillColor: color,
+                    color: color,
+                    weight: 2,
+                    opacity: 0.8,
+                    fillOpacity: 0.6
+                }).addTo(map).bindPopup(`<b>${point.name}</b><br>Traffic: ${point.status}`);
+            });
+            
+            mapInitialized = true;
+        }
+
+        function renderCurrency() {
+            const rates = generateCurrencyData();
+            const ticker = document.getElementById('currency-ticker');
+            const grid = document.getElementById('currency-grid');
+            
+            let tickerHtml = '';
+            [...rates, ...rates].forEach(rate => {
+                const color = rate.change >= 0 ? 'text-green-400' : 'text-red-400';
+                const arrow = rate.change >= 0 ? '↑' : '↓';
+                tickerHtml += `
+                    <div class="ticker-item flex items-center gap-3 min-w-[150px]">
+                        <span class="font-bold text-sm">${rate.pair}</span>
+                        <span class="ticker-font ${color}">${rate.rate.toFixed(2)}</span>
+                        <span class="text-xs ${color}">${arrow} ${Math.abs(rate.change)}%</span>
+                    </div>
+                `;
+            });
+            ticker.innerHTML = tickerHtml;
+            
+            grid.innerHTML = rates.slice(0, 4).map(rate => {
+                const color = rate.change >= 0 ? 'text-green-400' : 'text-red-400';
+                return `
+                    <div class="bg-white/5 rounded-xl p-3">
+                        <div class="text-xs text-gray-400 mb-1">${rate.pair}</div>
+                        <div class="text-lg font-bold ticker-font ${color}">${rate.rate.toFixed(rate.rate > 1000 ? 0 : 2)}</div>
+                        <div class="text-xs ${color}">${rate.change > 0 ? '+' : ''}${rate.change}%</div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function renderMetals() {
+            const metals = generateMetalsData();
+            const ticker = document.getElementById('metals-ticker');
+            const grid = document.getElementById('metals-grid');
+            
+            const gold = metals[0];
+            const multiplier = metalUnit === 'g' ? 0.0321507 : 1;
+            const unitLabel = metalUnit === 'g' ? 'g' : 'oz';
+            
+            document.getElementById('gold-main-rate').textContent = (gold.price * multiplier).toFixed(metalUnit === 'g' ? 2 : 2);
+            document.getElementById('gold-bid').textContent = (gold.bid * multiplier).toFixed(2);
+            document.getElementById('gold-ask').textContent = (gold.ask * multiplier).toFixed(2);
+            
+            let tickerHtml = '';
+            [...metals, ...metals].forEach(metal => {
+                const color = metal.change >= 0 ? 'text-green-400' : 'text-red-400';
+                const arrow = metal.change >= 0 ? '↑' : '↓';
+                const price = (metal.price * multiplier).toFixed(metal.price > 1000 ? 2 : 2);
+                tickerHtml += `
+                    <div class="ticker-item flex items-center gap-3 min-w-[180px]">
+                        <span class="font-bold text-sm text-yellow-400">${metal.symbol}</span>
+                        <span class="ticker-font text-white">$${price}</span>
+                        <span class="text-xs ${color}">${arrow} ${Math.abs(metal.changeP)}%</span>
+                    </div>
+                `;
+            });
+            ticker.innerHTML = tickerHtml;
+            
+            grid.innerHTML = metals.slice(1).map(metal => {
+                const color = metal.change >= 0 ? 'text-green-400' : 'text-red-400';
+                const price = (metal.price * multiplier).toFixed(metal.price > 100 ? 2 : 2);
+                return `
+                    <div class="metal-card bg-gradient-to-br from-yellow-900/20 to-yellow-600/10 rounded-xl p-3 border border-yellow-500/20">
+                        <div class="flex justify-between items-start mb-2">
+                            <div>
+                                <div class="text-xs text-gray-400">${metal.name}</div>
+                                <div class="text-xs text-yellow-600">${metal.symbol}</div>
+                            </div>
+                            <div class="text-[10px] text-gray-500">/${unitLabel}</div>
+                        </div>
+                        <div class="text-xl font-bold ticker-font text-white mb-1">$${price}</div>
+                        <div class="flex justify-between items-center">
+                            <span class="text-xs ${color}">${metal.change >= 0 ? '+' : ''}${metal.changeP}%</span>
+                            <div class="flex gap-1 text-[10px] text-gray-500">
+                                <span>B:${(metal.bid * multiplier).toFixed(1)}</span>
+                                <span>A:${(metal.ask * multiplier).toFixed(1)}</span>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function renderHealth() {
+            const alerts = generateHealthData();
+            const ticker = document.getElementById('health-ticker');
+            
+            const aqi = 82;
+            const aqiBadge = document.getElementById('aqi-badge');
+            const aqiStatus = document.getElementById('aqi-status');
+            const aqiAdvice = document.getElementById('aqi-advice');
+            
+            aqiBadge.textContent = aqi;
+            
+            if (aqi <= 50) {
+                aqiBadge.className = 'w-20 h-20 rounded-2xl aqi-good flex items-center justify-center text-3xl font-bold shadow-lg';
+                aqiStatus.textContent = 'Good';
+                aqiStatus.className = 'text-lg font-bold text-green-400';
+                aqiAdvice.textContent = 'Air quality is satisfactory';
+            } else if (aqi <= 100) {
+                aqiBadge.className = 'w-20 h-20 rounded-2xl aqi-moderate flex items-center justify-center text-3xl font-bold shadow-lg';
+                aqiStatus.textContent = 'Moderate';
+                aqiStatus.className = 'text-lg font-bold text-yellow-400';
+                aqiAdvice.textContent = 'Sensitive groups should limit outdoor exertion';
+            } else if (aqi <= 150) {
+                aqiBadge.className = 'w-20 h-20 rounded-2xl aqi-unhealthy-sensitive flex items-center justify-center text-3xl font-bold shadow-lg';
+                aqiStatus.textContent = 'Unhealthy for Sensitive';
+                aqiStatus.className = 'text-lg font-bold text-orange-400';
+                aqiAdvice.textContent = 'Reduce prolonged outdoor exertion';
+            } else {
+                aqiBadge.className = 'w-20 h-20 rounded-2xl aqi-unhealthy flex items-center justify-center text-3xl font-bold shadow-lg';
+                aqiStatus.textContent = 'Unhealthy';
+                aqiStatus.className = 'text-lg font-bold text-red-400';
+                aqiAdvice.textContent = 'Avoid outdoor activities';
+            }
+            
+            let tickerHtml = '';
+            [...alerts, ...alerts].forEach(alert => {
+                const colors = {
+                    warning: 'text-orange-400',
+                    info: 'text-blue-400',
+                    alert: 'text-red-400'
+                };
+                const icons = {
+                    warning: '⚠️',
+                    info: 'ℹ️',
+                    alert: '🚨'
+                };
+                tickerHtml += `
+                    <div class="ticker-item flex items-center gap-2 min-w-[300px]">
+                        <span>${icons[alert.severity]}</span>
+                        <span class="text-sm ${colors[alert.severity]}">${alert.message}</span>
+                    </div>
+                `;
+            });
+            ticker.innerHTML = tickerHtml;
+        }
+
+        function renderAirport() {
+            const flights = generateAirportData();
+            const container = document.getElementById('airport-alerts');
+            
+            container.innerHTML = flights.map(flight => {
+                const statusColors = {
+                    'On Time': 'text-green-400 bg-green-400/20',
+                    'Delayed': 'text-yellow-400 bg-yellow-400/20',
+                    'Cancelled': 'text-red-400 bg-red-400/20',
+                    'Boarding': 'text-blue-400 bg-blue-400/20'
+                };
+                
+                return `
+                    <div class="bg-white/5 rounded-xl p-3 border border-white/10">
+                        <div class="flex justify-between items-start mb-2">
+                            <div>
+                                <div class="font-bold text-white">${flight.flight}</div>
+                                <div class="text-xs text-gray-400">${flight.route}</div>
+                            </div>
+                            <span class="px-2 py-1 rounded-full text-xs font-bold ${statusColors[flight.status]}">
+                                ${flight.status}
+                            </span>
+                        </div>
+                        <div class="flex justify-between text-xs text-gray-400">
+                            <span>🕐 ${flight.time}</span>
+                            <span>📍 ${flight.terminal}</span>
+                            <span>🚪 ${flight.gate}</span>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function renderTempForecast() {
+            const hours = ['Now', '1PM', '2PM', '3PM', '4PM', '5PM', '6PM'];
+            const container = document.getElementById('temp-forecast');
+            
+            container.innerHTML = hours.map((hour, i) => {
+                const temp = 32 + Math.floor(Math.random() * 4 - 2);
+                const icons = ['☀️', '⛅', '🌤️', '☀️', '⛅', '🌙', '🌙'];
+                return `
+                    <div class="flex-shrink-0 bg-white/5 rounded-xl p-3 text-center min-w-[70px]">
+                        <div class="text-xs text-gray-400 mb-1">${hour}</div>
+                        <div class="text-xl mb-1">${icons[i]}</div>
+                        <div class="text-lg font-bold text-white">${temp}°</div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function renderEarthquake() {
+            const quakes = generateEarthquakeData();
+            const container = document.getElementById('earthquake-list');
+            
+            container.innerHTML = quakes.map(quake => `
+                <div class="bg-white/5 rounded-xl p-3 border-l-4 ${parseFloat(quake.magnitude) >= 4.0 ? 'border-red-500' : 'border-yellow-500'}">
+                    <div class="flex justify-between items-center mb-1">
+                        <div class="text-2xl font-bold text-white">M${quake.magnitude}</div>
+                        <div class="text-xs text-gray-400">${quake.time}</div>
+                    </div>
+                    <div class="text-sm text-gray-300 mb-1">${quake.location}</div>
+                    <div class="flex gap-4 text-xs text-gray-400">
+                        <span>Depth: ${quake.depth}</span>
+                        <span>Intensity: ${quake.intensity}</span>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function renderCrime() {
+            const crimes = generateCrimeData();
+            const container = document.getElementById('crime-alerts');
+            
+            container.innerHTML = crimes.map(crime => {
+                const severityColors = {
+                    high: 'border-red-500/50 bg-red-500/10',
+                    moderate: 'border-orange-500/50 bg-orange-500/10',
+                    low: 'border-green-500/50 bg-green-500/10'
+                };
+                
+                return `
+                    <div class="rounded-xl p-3 border ${severityColors[crime.severity]}">
+                        <div class="flex justify-between items-start mb-2">
+                            <div class="font-medium text-sm text-white">${crime.region}</div>
+                            <span class="text-xs text-gray-400">${crime.time}</span>
+                        </div>
+                        <div class="text-sm text-gray-300 mb-1">🚨 ${crime.crime}</div>
+                        <div class="flex justify-between items-center">
+                            <span class="text-xs px-2 py-1 rounded bg-white/10 text-gray-300">${crime.status}</span>
+                            <span class="text-xs ${crime.severity === 'high' ? 'text-red-400' : crime.severity === 'moderate' ? 'text-orange-400' : 'text-green-400'} uppercase">${crime.severity}</span>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function toggleMetalUnit() {
+            metalUnit = metalUnit === 'oz' ? 'g' : 'oz';
+            document.getElementById('metal-unit-btn').textContent = `per ${metalUnit}`;
+            renderMetals();
+        }
+
+        // Navigation
+        function switchPage(index) {
+            currentPage = index;
+            
+            document.querySelectorAll('.ticker-page').forEach((page, i) => {
+                if (i === index) {
+                    page.classList.remove('hidden');
+                } else {
+                    page.classList.add('hidden');
+                }
+            });
+            
+            document.querySelectorAll('.nav-btn').forEach((btn, i) => {
+                if (i === index) {
+                    btn.classList.remove('text-gray-500');
+                    btn.classList.add('text-blue-400', 'active');
+                } else {
+                    btn.classList.add('text-gray-500');
+                    btn.classList.remove('text-blue-400', 'active');
+                }
+            });
+            
+            // Initialize map when traffic page is opened
+            if (index === 1 && !mapInitialized) {
+                setTimeout(initMap, 100);
+            }
+        }
+
+        function toggleSettings() {
+            const modal = document.getElementById('settings-modal');
+            const content = document.getElementById('settings-content');
+            
+            if (modal.classList.contains('hidden')) {
+                modal.classList.remove('hidden');
+                setTimeout(() => {
+                    content.classList.remove('translate-y-full');
+                }, 10);
+            } else {
+                content.classList.add('translate-y-full');
+                setTimeout(() => {
+                    modal.classList.add('hidden');
+                }, 300);
+            }
+        }
+
+        function refreshAll() {
+            const btn = event.currentTarget;
+            const icon = btn.querySelector('svg');
+            icon.style.transition = 'transform 1s';
+            icon.style.transform = 'rotate(360deg)';
+            
+            setTimeout(() => {
+                icon.style.transition = 'none';
+                icon.style.transform = 'rotate(0deg)';
+            }, 1000);
+            
+            renderWeather();
+            renderTraffic();
+            renderCurrency();
+            renderMetals();
+            renderHealth();
+            renderAirport();
+            renderTempForecast();
+            renderEarthquake();
+            renderCrime();
+            
+            const now = new Date();
+            document.getElementById('weather-last-update').textContent = 
+                'Updated: ' + now.toLocaleTimeString();
+        }
+
+        // Touch/Swipe Handling
+        let touchStartX = 0;
+        let touchEndX = 0;
+        
+        const container = document.getElementById('main-container');
+        
+        container.addEventListener('touchstart', e => {
+            touchStartX = e.changedTouches[0].screenX;
+        });
+        
+        container.addEventListener('touchend', e => {
+            touchEndX = e.changedTouches[0].screenX;
+            handleSwipe();
+        });
+        
+        function handleSwipe() {
+            const swipeThreshold = 50;
+            const diff = touchStartX - touchEndX;
+            
+            if (Math.abs(diff) > swipeThreshold) {
+                if (diff > 0 && currentPage < 8) {
+                    switchPage(currentPage + 1);
+                } else if (diff < 0 && currentPage > 0) {
+                    switchPage(currentPage - 1);
+                }
+            }
+        }
+
+        // Auto-refresh
+        setInterval(() => {
+            renderCurrency();
+            renderMetals();
+        }, 60000);
+
+        // Initialize
+        renderWeather();
+        renderTraffic();
+        renderCurrency();
+        renderMetals();
+        renderHealth();
+        renderAirport();
+        renderTempForecast();
+        renderEarthquake();
+        renderCrime();
+
+        // Simulate live updates
+        setInterval(() => {
+            const rate = 56.24 + (Math.random() - 0.5) * 0.1;
+            document.getElementById('main-rate').textContent = rate.toFixed(2);
+            
+            const goldRate = 2045.80 + (Math.random() - 0.5) * 2;
+            document.getElementById('gold-main-rate').textContent = goldRate.toFixed(2);
+        }, 5000);
+    </script>
+</body>
+</html>
