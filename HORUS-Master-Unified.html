@@ -1,86 +1,40 @@
-<!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>HORUS Master Unified</title>
-    <link rel="stylesheet" href="styles.css">
+    <title>HORUS Master Integrated Intelligence System</title>
+    <link rel="stylesheet" type="text/css" href="styles.css">
 </head>
 <body>
-    <div id="splash-screen">
-        <h1>Welcome to HORUS System</h1>
-        <button id="continue">Continue</button>
-    </div>
-
-    <div id="login-screen" style="display:none;">
-        <h2>Login</h2>
-        <input type="text" id="username" placeholder="Username" />
-        <input type="password" id="password" placeholder="Password" />
-        <button id="login">Login</button>
-    </div>
-
-    <div id="main-dashboard" style="display:none;">
-        <div class="tabs">
-            <button class="tablinks" onclick="openTab(event, 'global')">Global Intelligence</button>
-            <button class="tablinks" onclick="openTab(event, 'events')">Events</button>
-            <button class="tablinks" onclick="openTab(event, 'sectors')">Sectors</button>
-            <button class="tablinks" onclick="openTab(event, 'markets')">Markets</button>
-            <button class="tablinks" onclick="openTab(event, 'regional')">Regional</button>
-            <button class="tablinks" onclick="openTab(event, 'synthesis')">Synthesis</button>
-        </div>
-
-        <div id="global" class="tabcontent">
-            <h3>Global Intelligence</h3>
-            <div id="satellite-map"></div>
-        </div>
-        <div id="events" class="tabcontent" style="display:none;">
-            <h3>Events</h3>
-        </div>
-        <div id="sectors" class="tabcontent" style="display:none;">
-            <h3>Sectors</h3>
-        </div>
-        <div id="markets" class="tabcontent" style="display:none;">
-            <h3>Markets</h3>
-        </div>
-        <div id="regional" class="tabcontent" style="display:none;">
-            <h3>Regional</h3>
-        </div>
-        <div id="synthesis" class="tabcontent" style="display:none;">
-            <h3>Synthesis</h3>
-        </div>
-
-        <div id="metrics">
-            <h3>Real-time Metrics</h3>
-            <div id="auto-updating-data"></div>
+    <div class="splash-screen">
+        <div class="breathing-eye"></div>
+        <div class="login">
+            <input type="password" placeholder="Enter Passcode" id="passcode">
+            <button onclick="checkPasscode()">Login</button>
         </div>
     </div>
-
-    <script src="script.js"></script>
+    <div class="tabs">
+        <div class="tab">Satellite Corridors</div>
+        <div class="tab">Global Intelligence</div>
+        <div class="tab">Breaking Events</div>
+        <div class="tab">Sector Analysis</div>
+        <div class="tab">Market Indicators</div>
+        <div class="tab">Executive Synthesis</div>
+    </div>
+    <div id="content"> </div>
     <script>
-        document.getElementById('continue').onclick = function() {
-            document.getElementById('splash-screen').style.display = 'none';
-            document.getElementById('login-screen').style.display = 'block';
-        };
-
-        document.getElementById('login').onclick = function() {
-            const username = document.getElementById('username').value;
-            // Add authentication logic here
-            document.getElementById('login-screen').style.display = 'none';
-            document.getElementById('main-dashboard').style.display = 'block';
-        };
-
-        function openTab(evt, tabName) {
-            var i, tabcontent, tablinks;
-            tabcontent = document.getElementsByClassName("tabcontent");
-            for (i = 0; i < tabcontent.length; i++) {
-                tabcontent[i].style.display = "none";
+        function checkPasscode() {
+            let passcode = document.getElementById('passcode').value;
+            if (passcode === 'horus2026') {
+                loadDashboard();
+            } else {
+                alert('Invalid Passcode!');
             }
-            tablinks = document.getElementsByClassName("tablinks");
-            for (i = 0; i < tablinks.length; i++) {
-                tablinks[i].className = tablinks[i].className.replace(" active", "");
-            }
-            document.getElementById(tabName).style.display = "block";
-            evt.currentTarget.className += " active";
+        }
+
+        function loadDashboard() {
+            // Load dynamic content here
+            document.querySelector('.splash-screen').style.display = 'none';
+            document.getElementById('content').innerHTML = '<h1>Welcome to HORUS Intelligence System</h1>';
+            // Additional dashboard loading logic
         }
     </script>
 </body>
